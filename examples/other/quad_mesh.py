@@ -46,8 +46,12 @@ patches = gfx.Mesh(
     gfx.MeshBasicMaterial(wireframe=True)
 )
 
+sphere = gfx.Mesh(
+    gfx.sphere_geometry(0.1),
+    gfx.MeshBasicMaterial(color="yellow"),
+)
 
-scene.add(patches)
+scene.add(patches, sphere)
 camera.show_object(patches)
 
 # Let there be ...
@@ -88,7 +92,15 @@ def on_key(e):
 
 @renderer.add_event_handler("click")
 def pick_id(event):
-    print(event.pick_info)
+    # print(event.pick_info)
+    if event.pick_info["world_object"] is patches:
+        face_index = event.pick_info["face_index"]
+        face_coord = event.pick_info["face_coord"]
+        vertex_indices = patches.geometry.positions.data[face_index]
+        positions = [patches.geometry.positions.data[int(i)] for i in vertex_indices]
+        pos = sum(p * w for p, w in zip(positions, face_coord)) / sum(face_coord)
+        sphere.local.position = pos
+        print(pos)
 
 
 def animate():
