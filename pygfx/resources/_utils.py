@@ -51,7 +51,7 @@ def make_little_endian(arr):
     return arr.astype(arr.dtype.newbyteorder("<"))
 
 
-def check_data_is_clean_for_performance(kind, arr):
+def check_data_is_clean_for_performance(kind: str, arr: np.ndarray) -> None:
     """Check that data is c_contiguous and little endian. Raise an error if not."""
     missing_props = []
     if not is_little_endian(arr):

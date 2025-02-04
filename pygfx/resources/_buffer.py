@@ -1,4 +1,8 @@
+from __future__ import annotations
+
+import collections.abc
 from math import floor, ceil
+from typing import TYPE_CHECKING
 import numpy as np
 
 from ._base import Resource
@@ -11,6 +15,18 @@ from ._utils import (
     make_little_endian,
     logger,
 )
+
+if TYPE_CHECKING:
+    from pygfx.utils.trackable import Store
+    from numpy.typing import ArrayLike
+
+    class BufferStore(Store):
+        """Attributes expected to exist on the _store object of a Buffer."""
+
+        nbytes: int
+        nitems: int
+        format: str | None
+        draw_range: tuple[int, int]
 
 
 class Buffer(Resource):
@@ -61,16 +77,18 @@ class Buffer(Resource):
       is recommended to use this when the bufer data is dynamic.
     """
 
+    _store: BufferStore
+
     def __init__(
         self,
-        data=None,
+        data: collections.abc.Buffer | None = None,
         *,
-        nbytes=None,
-        nitems=None,
-        format=None,
-        chunk_size=None,
-        force_contiguous=False,
-        usage=0,
+        nbytes: int | None = None,
+        nitems: int | None = None,
+        format: str | None = None,
+        chunk_size: int | None = None,
+        force_contiguous: bool = False,
+        usage: int = 0,
     ):
         super().__init__()
         Resource._rev += 1
@@ -81,8 +99,8 @@ class Buffer(Resource):
         self._wgpu_usage = int(usage)
 
         # Init
-        self._data = None
-        self._view = None
+        self._data: collections.abc.Buffer | None = None
+        self._view: np.ndarray | None = None
         self._force_contiguous = bool(force_contiguous)
 
         # Process data
@@ -157,17 +175,17 @@ class Buffer(Resource):
             chunk_size = min(max(int(chunk_size), 1), the_nitems)
 
         # Init chunks map
+        # chunk_list is list of (offset, size, data)
+        self._chunk_list: list[tuple[int, int, np.ndarray]] = []
         if data is None:
             self._chunks_dirt_flag = 0
             self._chunk_size = 0
-            self._chunk_mask = None
-            self._chunk_list = []
+            self._chunk_mask: np.ndarray | None = None
         else:
             self._chunks_dirt_flag = 2
             self._chunk_size = chunk_size
             n_chunks = ceil(the_nitems / self._chunk_size)
             self._chunk_mask = np.ones((n_chunks,), bool)
-            self._chunk_list = None
 
     @property
     def data(self):
@@ -246,12 +264,12 @@ class Buffer(Resource):
         )
 
     @property
-    def draw_range(self):
+    def draw_range(self) -> tuple[int, int]:
         """The range to data (origin, size) expressed in items."""
         return self._store.draw_range
 
     @draw_range.setter
-    def draw_range(self, draw_range):
+    def draw_range(self, draw_range: tuple[int, int]) -> None:
         origin, size = draw_range
         origin, size = int(origin), int(size)
         if not (origin == 0 or 0 < origin < self.nitems):  # note nitems can be 0
@@ -311,7 +329,7 @@ class Buffer(Resource):
         self._rev = Resource._rev
         self._gfx_mark_for_sync()
 
-    def set_data(self, data):
+    def set_data(self, data: collections.abc.Buffer) -> None:
         """Reset the data to a new array.
 
         This avoids a data-copy compared to doing ``buffer.data[:] = new_data``.
@@ -322,9 +340,9 @@ class Buffer(Resource):
         # Do couple of checks
         if self._force_contiguous:
             check_data_is_clean_for_performance("buffer", view)
-        if view.nbytes != self._view.nbytes:
+        if view.nbytes != self.nbytes:
             raise ValueError("buffer.set_data() nbytes does not match.")
-        if view.dtype != self._view.dtype:
+        if self._view is not None and view.dtype != self._view.dtype:
             raise ValueError("buffer.set_data() format does not match.")
         # Make sure the shape is ok. We only care about the first dimension.
         reshape_array(view, self.nitems)
@@ -333,7 +351,7 @@ class Buffer(Resource):
         self._view = view
         self.update_full()
 
-    def update_full(self):
+    def update_full(self) -> None:
         """Mark the whole data for upload."""
         self._chunk_mask.fill(True)
         self._chunks_dirt_flag = 2
@@ -341,7 +359,7 @@ class Buffer(Resource):
         self._rev = Resource._rev
         self._gfx_mark_for_sync()
 
-    def update_indices(self, indices):
+    def update_indices(self, indices: ArrayLike) -> None:
         """Mark specific item indices for upload."""
         indices = np.asarray(indices)
         div = self._chunk_size
@@ -351,7 +369,7 @@ class Buffer(Resource):
         self._rev = Resource._rev
         self._gfx_mark_for_sync()
 
-    def update_range(self, offset=0, size=None):
+    def update_range(self, offset: int = 0, size: int | None = None) -> None:
         """Mark a certain range of the data for upload to the GPU.
 
         The offset and size are expressed in integer number of items.
@@ -383,7 +401,7 @@ class Buffer(Resource):
         self._rev = Resource._rev
         self._gfx_mark_for_sync()
 
-    def _gfx_get_chunk_descriptions(self):
+    def _gfx_get_chunk_descriptions(self) -> list[tuple[int, int]]:
         """Get a list of (offset, size) tuples, that can be
         used in _gfx_get_chunk_data(). This method also clears
         the chunk dirty statuses.
