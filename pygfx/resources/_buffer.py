@@ -17,6 +17,7 @@ from ._utils import (
 )
 
 if TYPE_CHECKING:
+    from typing import Never
     from pygfx.utils.trackable import Store
     from numpy.typing import ArrayLike
 
@@ -188,7 +189,7 @@ class Buffer(Resource):
             self._chunk_mask = np.ones((n_chunks,), bool)
 
     @property
-    def data(self):
+    def data(self) -> collections.abc.Buffer | None:
         """The data for this buffer.
 
         Can be None if the data only exists on the GPU. This object is the same
@@ -197,7 +198,7 @@ class Buffer(Resource):
         return self._data
 
     @property
-    def view(self):
+    def view(self) -> np.ndarray | None:
         """A numpy array view on the data of this buffer.
 
         Can be None if the data only exists on the GPU. This is a view on the
@@ -206,7 +207,7 @@ class Buffer(Resource):
         return self._view
 
     @property
-    def nbytes(self):
+    def nbytes(self) -> int:
         """The number of bytes in the buffer."""
         # Note: many properties are stored on ._store, even if they cannot
         # change. This is done so that whan a buffer is swapped from another, we
@@ -216,12 +217,12 @@ class Buffer(Resource):
         return self._store.nbytes
 
     @property
-    def nitems(self):
+    def nitems(self) -> int:
         """The number of items in the buffer."""
         return self._store.nitems
 
     @property
-    def itemsize(self):
+    def itemsize(self) -> int:
         """The number of bytes for a single item."""
         # Note: For regular NxM buffers this can also be calculated from the
         # format, but not when the format is more complex / None, as with
@@ -237,7 +238,7 @@ class Buffer(Resource):
             raise RuntimeError("Cannot determine Buffer.itemsize")
 
     @property
-    def format(self):
+    def format(self) -> str | None:
         """The buffer format.
 
         Usually a pygfx format specifier (e.g. 'u2' for scalar uint16, or '3xf4'
@@ -247,18 +248,18 @@ class Buffer(Resource):
         return self._store.format
 
     @property
-    def usage(self):
+    def usage(self) -> int:
         """Bitmask indicating how the buffer can be used in a wgpu pipeline."""
         return self._wgpu_usage
 
     @property
-    def vertex_byte_range(self):
+    def vertex_byte_range(self) -> Never:
         raise DeprecationWarning(
             "vertex_byte_range is deprecated, use draw_range instead."
         )
 
     @vertex_byte_range.setter
-    def vertex_byte_range(self, offset_nbytes):
+    def vertex_byte_range(self, offset_nbytes) -> Never:
         raise DeprecationWarning(
             "vertex_byte_range is deprecated, use draw_range instead."
         )
@@ -280,7 +281,7 @@ class Buffer(Resource):
         Resource._rev += 1
         self._rev = Resource._rev
 
-    def send_data(self, offset, data):
+    def send_data(self, offset: int, data: np.ndarray) -> None:
         """Send a chunk of data to the GPU.
 
         This provides a way to upload data to buffers that don't have local
@@ -353,6 +354,7 @@ class Buffer(Resource):
 
     def update_full(self) -> None:
         """Mark the whole data for upload."""
+        # FIXME: this will raise an error for a buffer with no local data
         self._chunk_mask.fill(True)
         self._chunks_dirt_flag = 2
         Resource._rev += 1
@@ -361,6 +363,7 @@ class Buffer(Resource):
 
     def update_indices(self, indices: ArrayLike) -> None:
         """Mark specific item indices for upload."""
+        # FIXME: this will raise an error for a buffer with no local data
         indices = np.asarray(indices)
         div = self._chunk_size
         self._chunk_mask[indices // div] = True
@@ -395,6 +398,7 @@ class Buffer(Resource):
             return self.update_full()
         # Update map
         div = self._chunk_size
+        # FIXME: will raise an error for a buffer with no local data
         self._chunk_mask[floor(index1 / div) : ceil(index2 / div)] = True
         self._chunks_dirt_flag = 1
         Resource._rev += 1
@@ -417,7 +421,7 @@ class Buffer(Resource):
             return []
         elif self._chunks_dirt_flag == 2:
             chunk_descriptions = [(0, self.nitems)]
-        elif np.all(self._chunk_mask):
+        elif np.all(self._chunk_mask):  # FIXME
             chunk_descriptions = [(0, self.nitems)]
         else:
             # Get merged chunk blocks, using a smart algorithm.
@@ -434,7 +438,7 @@ class Buffer(Resource):
 
         # Reset
         self._chunks_dirt_flag = 0
-        self._chunk_mask.fill(False)
+        self._chunk_mask.fill(False)  # FIXME
         return chunk_descriptions
 
     def _gfx_get_chunk_data(self, offset, size):

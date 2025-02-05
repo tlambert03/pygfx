@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+from typing import ClassVar
 import weakref
 
 from ..utils.trackable import Trackable
@@ -6,19 +9,20 @@ from ..utils.trackable import Trackable
 class Resource(Trackable):
     """Base class for :class:`~pygfx.resources.Buffer` and :class:`~pygfx.resources.Texture`."""
 
-    _resource_counts = {}  # Just to track the number of buffers and textures alive
+    # mapping of {Resource-type-name -> instance-count}
+    _resource_counts: ClassVar[dict[str, int]] = {}
     _rev = 0  # integer hash
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         cname = self.__class__.__name__
         Resource._resource_counts[cname] = Resource._resource_counts.get(cname, 0) + 1
 
-    def __del__(self):
+    def __del__(self) -> None:
         cname = self.__class__.__name__
         Resource._resource_counts[cname] -= 1
 
-    def _gfx_mark_for_sync(self):
+    def _gfx_mark_for_sync(self) -> None:
         resource_update_registry._gfx_mark_for_sync(self)
 
     @property
